@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kish Payment System - M-Pesa STK Push</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Payment Card -->
+        <div id="paymentCard" class="card animate-slideIn">
+            <div class="card-header">
+                <div class="icon-container">
+                    <i class="fas fa-credit-card"></i>
+                </div>
+                <h1 class="gradient-text">Kish Payment</h1>
+                <p class="subtitle">Secure payments via M-Pesa</p>
+            </div>
+
+            <!-- Trust Badges -->
+            <div class="trust-badges">
+                <div class="badge">
+                    <i class="fas fa-lock"></i>
+                    <span>256-bit SSL</span>
+                </div>
+                <div class="badge">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>PCI Compliant</span>
+                </div>
+                <div class="badge">
+                    <i class="fas fa-mobile-alt"></i>
+                    <span>M-Pesa</span>
+                </div>
+            </div>
+
+            <!-- Payment Form -->
+            <form id="paymentForm">
+                <div class="form-group">
+                    <label for="phoneNumber">
+                        <i class="fas fa-phone"></i>
+                        Phone Number
+                    </label>
+                    <div class="input-group">
+                        <span class="prefix">+254</span>
+                        <input type="tel" 
+                               id="phoneNumber" 
+                               placeholder="722000000"
+                               maxlength="9"
+                               required>
+                    </div>
+                    <small>Enter without leading 0 (e.g., 722000000)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="amount">
+                        <i class="fas fa-money-bill"></i>
+                        Amount (KES)
+                    </label>
+                    <div class="input-group">
+                        <span class="prefix">KES</span>
+                        <input type="number" 
+                               id="amount" 
+                               placeholder="1000"
+                               min="10"
+                               step="1"
+                               required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">
+                        <i class="fas fa-pen"></i>
+                        Description (Optional)
+                    </label>
+                    <input type="text" 
+                           id="description" 
+                           placeholder="Payment for..."
+                           maxlength="13">
+                </div>
+
+                <button type="submit" id="payButton" class="btn-primary">
+                    <i class="fas fa-lock"></i>
+                    <span>Pay Now</span>
+                </button>
+            </form>
+
+            <p class="terms">
+                By proceeding, you agree to our 
+                <a href="#">Terms</a> and <a href="#">Privacy Policy</a>
+            </p>
+        </div>
+
+        <!-- Status Card -->
+        <div id="statusCard" class="card hidden">
+            <div class="status-content">
+                <div id="statusIcon" class="status-icon status-pending">
+                    <i id="statusIconElement" class="fas fa-spinner fa-spin"></i>
+                </div>
+                
+                <h2 id="statusTitle">Waiting for Payment...</h2>
+                <p id="statusMessage" class="status-message">
+                    Please check your phone and enter your M-Pesa PIN
+                </p>
+                
+                <div id="transactionDetails" class="transaction-details hidden">
+                    <div class="detail-row">
+                        <span>Transaction ID:</span>
+                        <span id="transactionId" class="transaction-id"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span>Amount:</span>
+                        <span id="transactionAmount" class="transaction-amount"></span>
+                    </div>
+                </div>
+                
+                <div id="actionButtons" class="action-buttons hidden">
+                    <button id="viewReceiptBtn" class="btn-success">
+                        <i class="fas fa-receipt"></i>
+                        View Receipt
+                    </button>
+                    <button id="newPaymentBtn" class="btn-secondary">
+                        <i class="fas fa-plus"></i>
+                        New Payment
+                    </button>
+                </div>
+                
+                <div id="loadingSpinner" class="loading-spinner">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Receipt Card -->
+        <div id="receiptCard" class="card hidden">
+            <div class="receipt-header">
+                <h2><i class="fas fa-receipt"></i> Payment Receipt</h2>
+            </div>
+            
+            <div class="receipt-content">
+                <div class="receipt-details">
+                    <div class="receipt-row">
+                        <span>Transaction ID:</span>
+                        <span id="receiptTransactionId" class="receipt-value"></span>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Phone Number:</span>
+                        <span id="receiptPhone" class="receipt-value"></span>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Amount:</span>
+                        <span id="receiptAmount" class="receipt-amount"></span>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Date:</span>
+                        <span id="receiptDate" class="receipt-value"></span>
+                    </div>
+                    <div class="receipt-row">
+                        <span>Status:</span>
+                        <span class="status-badge status-completed">COMPLETED</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="receipt-actions">
+                <button id="downloadReceiptBtn" class="btn-primary">
+                    <i class="fas fa-download"></i>
+                    Download PDF
+                </button>
+                <button id="printReceiptBtn" class="btn-secondary">
+                    <i class="fas fa-print"></i>
+                    Print
+                </button>
+                <button id="newFromReceiptBtn" class="btn-success full-width">
+                    <i class="fas fa-plus"></i>
+                    New Payment
+                </button>
+            </div>
+            
+            <p class="receipt-footer">
+                Thank you for your payment!
+            </p>
+        </div>
+    </div>
+
+    <!-- API Status Banner -->
+    <div id="apiStatus" class="api-status connected">
+        <i class="fas fa-circle"></i>
+        <span>Backend: </span>
+        <span id="apiStatusText">Checking...</span>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
