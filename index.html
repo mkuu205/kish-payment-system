@@ -308,6 +308,12 @@
             transform: translateY(0);
         }
 
+        .pay-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         /* Loading State */
         .loading-state {
             text-align: center;
@@ -402,6 +408,14 @@
             color: var(--success);
         }
 
+        .receipt-row .value.failed {
+            color: var(--danger);
+        }
+
+        .receipt-row .value.pending {
+            color: var(--warning);
+        }
+
         .receipt-actions {
             display: flex;
             gap: 1rem;
@@ -490,6 +504,16 @@
             100% { transform: translateX(400%); }
         }
 
+        .error-message {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--danger);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+            text-align: center;
+            color: var(--danger);
+        }
+
         /* Features Section */
         .features {
             display: flex;
@@ -551,10 +575,33 @@
             }
         }
 
-        /* Loading State for Button */
-        .pay-button.loading {
-            opacity: 0.7;
-            cursor: not-allowed;
+        /* Toast Notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            border-left: 4px solid var(--success);
+            animation: slideInRight 0.3s ease;
+            z-index: 1000;
+        }
+
+        .toast.error {
+            border-left-color: var(--danger);
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -573,7 +620,7 @@
             </div>
             <div class="nav-links">
                 <a href="#" class="active">Pay</a>
-                <a href="#">Transactions</a>
+                <a href="#" onclick="viewTransactions()">Transactions</a>
                 <a href="#">Support</a>
             </div>
         </nav>
@@ -723,9 +770,10 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script>
-        // Configuration
-        const API_BASE_URL = 'http://localhost:5000'; // Update with your backend URL
-        let currentTransactionId = null;
+        // Configuration - UPDATE THIS WITH YOUR BACKEND URL
+        const API_BASE_URL = 'https://kish-payment-system-backend.onrender.com';
+        
+        let currentTransaction = null;
         let pollingInterval = null;
 
         // DOM Elements
@@ -779,6 +827,39 @@
             return !isNaN(num) && num >= 10 && num <= 150000;
         }
 
+        // Show toast notification
+        function showToast(message, isError = false) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${isError ? 'error' : ''}`;
+            toast.innerHTML = `
+                <i class="fas ${isError ? 'fa-exclamation-circle' : 'fa-check-circle'}"></i>
+                <span>${message}</span>
+            `;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: ${isError ? 'rgba(239, 68, 68, 0.95)' : 'rgba(16, 185, 129, 0.95)'};
+                backdrop-filter: blur(10px);
+                padding: 1rem 1.5rem;
+                border-radius: 12px;
+                color: white;
+                display: flex;
+                align-items: center;
+                gap: 0.75rem;
+                z-index: 1000;
+                animation: slideInRight 0.3s ease;
+                font-size: 0.9rem;
+            `;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => toast.remove(), 300);
+            }, 5000);
+        }
+
         // Handle payment submission
         async function handlePaymentSubmit(e) {
             e.preventDefault();
@@ -792,75 +873,99 @@
             
             // Validate
             if (!validatePhone(phone)) {
-                alert('Please enter a valid Safaricom phone number (e.g., 0712345678 or 254712345678)');
+                showToast('Please enter a valid Safaricom phone number (e.g., 0712345678)', true);
                 return;
             }
             
             if (!validateAmount(amountInput)) {
-                alert('Please enter a valid amount between KES 10 and KES 150,000');
+                showToast('Please enter a valid amount between KES 10 and KES 150,000', true);
                 return;
             }
             
             // Show loading state
             paymentForm.classList.add('hidden');
             loadingState.classList.remove('hidden');
-            payButton.classList.add('loading');
+            payButton.disabled = true;
             
             try {
                 // Send STK push request
-                const response = await fetch(`${API_BASE_URL}/stkpush`, {
+                const response = await fetch(`${API_BASE_URL}/api/payment/stkpush`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
                         phone: phone,
-                        amount: amountInput
+                        amount: parseInt(amountInput)
                     })
                 });
                 
                 const data = await response.json();
                 
                 if (!response.ok) {
-                    throw new Error(data.error || 'Failed to initiate payment');
+                    throw new Error(data.message || 'Failed to initiate payment');
+                }
+                
+                if (!data.success) {
+                    throw new Error(data.message || 'Payment initiation failed');
                 }
                 
                 // Store transaction ID and show status card
-                currentTransactionId = data.transactionId;
+                currentTransaction = {
+                    transactionId: data.transactionId,
+                    phone: phone,
+                    amount: amountInput
+                };
                 
                 // Hide loading, show status card
                 loadingState.classList.add('hidden');
                 statusCard.classList.remove('hidden');
                 
                 // Start polling for status
-                startPolling(currentTransactionId);
+                startPolling(data.transactionId);
+                
+                showToast('STK Push sent! Check your phone to complete payment');
                 
             } catch (error) {
                 console.error('Payment error:', error);
-                alert('Failed to initiate payment: ' + error.message);
+                showToast(error.message || 'Failed to initiate payment. Please try again.', true);
                 
                 // Reset UI
                 paymentForm.classList.remove('hidden');
                 loadingState.classList.add('hidden');
-                payButton.classList.remove('loading');
+                payButton.disabled = false;
             }
         }
 
         // Start polling for payment status
         function startPolling(transactionId) {
             let attempts = 0;
-            const maxAttempts = 60; // Poll for 2 minutes (60 * 2 seconds)
+            const maxAttempts = 30; // Poll for 1 minute (30 * 2 seconds)
+            
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+            }
             
             pollingInterval = setInterval(async () => {
                 attempts++;
                 
                 try {
-                    const response = await fetch(`${API_BASE_URL}/status/${transactionId}`);
+                    const response = await fetch(`${API_BASE_URL}/api/payment/status/${transactionId}`);
                     const data = await response.json();
                     
-                    if (data.status === 'completed') {
+                    if (!response.ok) {
+                        if (attempts >= maxAttempts) {
+                            clearInterval(pollingInterval);
+                            showToast('Payment timeout. Please check your transaction status later.', true);
+                            resetToPayment();
+                        }
+                        return;
+                    }
+                    
+                    if (data.status === 'SUCCESS') {
                         // Payment successful
                         clearInterval(pollingInterval);
+                        pollingInterval = null;
                         
                         // Update receipt with transaction details
                         updateReceipt(data.transaction);
@@ -868,26 +973,43 @@
                         // Show receipt card
                         statusCard.classList.add('hidden');
                         receiptCard.classList.remove('hidden');
+                        payButton.disabled = false;
                         
-                    } else if (data.status === 'failed' || attempts >= maxAttempts) {
-                        // Payment failed or timeout
+                        showToast('Payment successful!');
+                        
+                    } else if (data.status === 'FAILED') {
+                        // Payment failed
                         clearInterval(pollingInterval);
+                        pollingInterval = null;
                         
-                        alert('Payment timed out or failed. Please try again.');
+                        showToast('Payment failed. Please try again.', true);
+                        resetToPayment();
                         
-                        // Reset to payment form
+                    } else if (attempts >= maxAttempts) {
+                        // Timeout
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        
+                        showToast('Payment timeout. Please check your transaction status later.', true);
                         resetToPayment();
                     }
                     
                 } catch (error) {
                     console.error('Polling error:', error);
+                    
+                    if (attempts >= maxAttempts) {
+                        clearInterval(pollingInterval);
+                        pollingInterval = null;
+                        showToast('Unable to verify payment status. Please check later.', true);
+                        resetToPayment();
+                    }
                 }
             }, 2000); // Poll every 2 seconds
         }
 
         // Update receipt with transaction details
         function updateReceipt(transaction) {
-            const date = new Date(transaction.timestamp);
+            const date = new Date(transaction.createdAt);
             const formattedDate = date.toLocaleString('en-KE', {
                 year: 'numeric',
                 month: 'long',
@@ -915,55 +1037,81 @@
                 </div>
                 <div class="receipt-row">
                     <span class="label">Status</span>
-                    <span class="value success">SUCCESS</span>
+                    <span class="value success">${transaction.status}</span>
                 </div>
+                ${transaction.mpesaReceiptNumber ? `
+                <div class="receipt-row">
+                    <span class="label">M-Pesa Receipt</span>
+                    <span class="value">${transaction.mpesaReceiptNumber}</span>
+                </div>
+                ` : ''}
             `;
+            
+            // Store current transaction for PDF
+            currentTransaction = transaction;
         }
 
         // Download receipt as PDF
-        function downloadReceipt() {
+        async function downloadReceipt() {
+            if (!currentTransaction) {
+                showToast('No transaction data available', true);
+                return;
+            }
+            
             const { jsPDF } = window.jspdf;
-            
-            // Get receipt data
-            const rows = document.querySelectorAll('.receipt-row');
-            const data = {};
-            
-            rows.forEach(row => {
-                const label = row.querySelector('.label').textContent;
-                const value = row.querySelector('.value').textContent;
-                data[label] = value;
-            });
             
             // Create PDF
             const doc = new jsPDF();
             
-            // Add header
+            // Add header with gradient effect
             doc.setFillColor(124, 58, 237);
-            doc.rect(0, 0, 210, 40, 'F');
+            doc.rect(0, 0, 210, 45, 'F');
             
             doc.setTextColor(255, 255, 255);
-            doc.setFontSize(24);
+            doc.setFontSize(28);
             doc.setFont('helvetica', 'bold');
-            doc.text('Kish Payment', 20, 25);
+            doc.text('Kish Payment', 20, 28);
             
             doc.setFontSize(12);
-            doc.text('Payment Receipt', 20, 35);
+            doc.text('Payment Receipt', 20, 40);
             
             // Add receipt details
             doc.setTextColor(0, 0, 0);
             doc.setFontSize(11);
             
-            let yPos = 60;
-            Object.entries(data).forEach(([key, value]) => {
+            const date = new Date(currentTransaction.createdAt);
+            const formattedDate = date.toLocaleString('en-KE', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            let yPos = 65;
+            
+            const details = [
+                ['Transaction ID', currentTransaction.transactionId],
+                ['Phone Number', currentTransaction.phone],
+                ['Amount', `KES ${parseFloat(currentTransaction.amount).toLocaleString()}`],
+                ['Date & Time', formattedDate],
+                ['Status', currentTransaction.status]
+            ];
+            
+            if (currentTransaction.mpesaReceiptNumber) {
+                details.push(['M-Pesa Receipt', currentTransaction.mpesaReceiptNumber]);
+            }
+            
+            details.forEach(([label, value]) => {
                 doc.setFont('helvetica', 'bold');
-                doc.text(key + ':', 20, yPos);
+                doc.text(label + ':', 20, yPos);
                 doc.setFont('helvetica', 'normal');
                 doc.text(value, 80, yPos);
-                yPos += 10;
+                yPos += 12;
             });
             
             // Add footer
-            yPos = 250;
+            yPos = 260;
             doc.setFontSize(10);
             doc.setTextColor(128, 128, 128);
             doc.text('This is an official receipt from Kish Payment System', 20, yPos);
@@ -976,7 +1124,9 @@
             doc.rect(10, 10, 190, 277);
             
             // Save PDF
-            doc.save(`Kish_Receipt_${data['Transaction ID'] || Date.now()}.pdf`);
+            doc.save(`Kish_Receipt_${currentTransaction.transactionId}.pdf`);
+            
+            showToast('Receipt downloaded successfully!');
         }
 
         // Reset to payment form
@@ -992,14 +1142,19 @@
             loadingState.classList.add('hidden');
             statusCard.classList.add('hidden');
             receiptCard.classList.add('hidden');
-            payButton.classList.remove('loading');
+            payButton.disabled = false;
             
             // Clear form
             document.getElementById('phone').value = '';
             document.getElementById('amount').value = '';
             
-            // Clear transaction ID
-            currentTransactionId = null;
+            // Clear current transaction
+            currentTransaction = null;
+        }
+
+        // View transactions (optional feature)
+        function viewTransactions() {
+            window.open(`${API_BASE_URL}/api/payment/transactions`, '_blank');
         }
 
         // Auto-format phone input
@@ -1014,18 +1169,19 @@
         // Add floating label effect
         document.querySelectorAll('.input-wrapper input').forEach(input => {
             input.addEventListener('focus', function() {
-                this.parentElement.classList.add('focused');
+                this.parentElement.style.borderColor = '#7C3AED';
+                this.parentElement.style.boxShadow = '0 0 0 3px rgba(124, 58, 237, 0.2)';
             });
             
             input.addEventListener('blur', function() {
-                if (!this.value) {
-                    this.parentElement.classList.remove('focused');
-                }
+                this.parentElement.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                this.parentElement.style.boxShadow = 'none';
             });
         });
 
         // Initialize
         console.log('Kish Payment System initialized');
+        console.log('API Base URL:', API_BASE_URL);
     </script>
 </body>
 </html>
